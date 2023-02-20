@@ -9,3 +9,4 @@ data/wfo_list.txt
 data/sPlot/
 data/clim/ai_et0.tif
 data/cleaned/pres_abs_eco.rds
+data/cleaned/p50_rd_data_ecoregion.rds

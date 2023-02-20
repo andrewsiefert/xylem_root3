@@ -19,8 +19,8 @@ rm(list = setdiff(ls(), "d"))
 # P50 + rooting depth data ------------------------------------------------
 
 out <- d %>%
-  select(species, ecoregion, p50, rd_max, arid, twi, wtd, pres) %>%
+  select(species, ecoregion, p50, rd_max, arid, wtd, pres) %>%
   mutate(species = as.numeric(factor(species)),
          ecoregion = as.numeric(factor(ecoregion))) 
 
-saveRDS(out, "data2/cleaned/p50_rd_data_ecoregion.rds")
+saveRDS(out, "data/cleaned/p50_rd_data_ecoregion.rds")
