@@ -80,5 +80,5 @@ p50 <- xylem2 %>%
   ungroup()
 
 # export data
-saveRDS(xylem2, "data/traits/p50_database.rds")
+saveRDS(xylem2, "data/cleaned/p50_database.rds")
 write_csv(p50, "data/cleaned/p50_data.csv")
