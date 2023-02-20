@@ -4,7 +4,7 @@ library(janitor)
 
 
 # load Martin St.Paul et al. Ecol Lett 2017
-martin <- read_csv("data/p50/martin.csv") %>%
+martin <- read_csv("data/traits/martin.csv") %>%
   clean_names() %>% 
   select(species_binomial, group, p50, references) %>%
   rename(species = species_binomial, reference = references) %>%
@@ -14,7 +14,7 @@ martin <- read_csv("data/p50/martin.csv") %>%
 
 
 # load new dataset compiled by Laughlin
-new <- read_csv("data/p50/new.p50.data.filtered.csv") %>%
+new <- read_csv("data/traits/new.p50.data.filtered.csv") %>%
   clean_names() %>%
   rename(reference = paper) %>%
   select(species, group, p50, reference) %>%
@@ -24,7 +24,7 @@ new <- read_csv("data/p50/new.p50.data.filtered.csv") %>%
 
 
 # add XFT data
-xft <- read_csv("data/p50/30MAR2021_cleaned_xft.csv") %>%
+xft <- read_csv("data/traits/30MAR2021_cleaned_xft.csv") %>%
   as_tibble() %>%
   clean_names() %>%
   mutate(group = str_replace_all(group, c("gymnosperm"="Gymnosperm", "angiosperm"="Angiosperm"))) %>% 
