@@ -2,6 +2,9 @@
 .Rhistory
 .RData
 .Ruserdata
+*.tif
+*.nc
 xylem_root3.Rproj
 data/wfo_list.txt
 data/sPlot/
+data/clim/ai_et0.tif

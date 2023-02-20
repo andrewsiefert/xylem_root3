@@ -13,7 +13,7 @@ rm(r)
 
 
 # read in sPlot plot data
-plots <- readRDS("data2/cleaned/sPlot_plot_data.rds")
+plots <- readRDS("data/cleaned/sPlot_plot_data.rds")
 coords <- distinct(plots, longitude, latitude)
 
 wtd <- extract(wtd_r, coords) %>% mutate(WTD = -WTD/10)
@@ -23,4 +23,4 @@ out <- coords %>%
   distinct() %>%
   na.omit()
 
-saveRDS(out, "data2/clim/wtd/sPlot_wtd.rds")
+saveRDS(out, "data/clim/wtd/sPlot_wtd.rds")
