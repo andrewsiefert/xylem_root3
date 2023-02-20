@@ -28,5 +28,4 @@ ggplot() +
   theme(panel.grid = element_line(color = "gray80")) +
   labs(fill = "# plots")
 
-ggsave("results/figures/plot_map.jpg", height = 4, width = 7, units = "in", dpi = 300)
 ggsave("results/figures/plot_map.svg", height = 4, width = 7, units = "in")

@@ -25,8 +25,8 @@ rm(traits)
 
 
 # extract MAT and annual precip
-mat_r <- rast("data/clim2/worldclim/wc2.1_2.5m_bio_1.tif")
-ppt_r <- rast("data/clim2/worldclim/wc2.1_2.5m_bio_12.tif")
+mat_r <- rast("data/clim/worldclim/wc2.1_2.5m_bio_1.tif")
+ppt_r <- rast("data/clim/worldclim/wc2.1_2.5m_bio_12.tif")
 
 coords <- distinct(d2, longitude, latitude)
 
@@ -54,7 +54,6 @@ d3 <- left_join(d2, coords) %>%
   ungroup()
 
 
-
 whittaker <- Whittaker_biomes %>% rename(mat = 1, ppt = 2)
 
 
@@ -65,10 +64,9 @@ ggplot(whittaker, aes(x = mat, y = ppt)) +
                     breaks = names(Ricklefs_colors),
                     labels = names(Ricklefs_colors),
                     values = Ricklefs_colors) +
-  scale_size(trans = "sqrt", breaks = c(1, 100, 10000), range = c(0.5, 4)) +
+  scale_size(trans = "sqrt", breaks = c(1, 100, 10000), range = c(0.5, 3)) +
   theme_bw() +
   theme(panel.grid = element_blank()) +
   labs(x = bquote(Temperature~(degree*C)), y = "Precipitation (cm)", size = "# plots")
 
-ggsave("results/figures/biome_plot.svg", height = 6.5, width = 9, units = "in")
-ggsave("results/figures/biome_plot.pdf", height = 6.5, width = 9, units = "in")
+ggsave("results/figures/biome_plot.svg", height = 5, width = 7.5, units = "in")
