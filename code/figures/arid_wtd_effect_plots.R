@@ -40,8 +40,7 @@ trait <- readRDS("data/cleaned/trait_data_sPlot.rds") %>%
   dplyr::select(species, p50, rd_max) %>%
   na.omit()
 
-
-
+plot <- readRDS("data/cleaned/plot_clim_data.rds")
 
 # Prepare stuff for plotting ----------------------------------------------
 
@@ -62,20 +61,20 @@ re_int <- eco_int + spp_int
 
 # calculate trait & environment sequences and quantiles
 arid_r <- quantile(d$arid, c(0.01, 0.99))
-arid_seq <- seq(arid_r[1], arid_r[2], length.out = 50)
-arid_levs <- quantile(d$arid, c(0.05, 0.95))
+arid_seq <- seq(arid_r[1], arid_r[2], length.out = 100)
+arid_levs <- quantile(plot$arid, c(0.05, 0.95)) %>% transform("arid_sqrt")
 
 wtd_r <- quantile(d$wtd, c(0.01, 0.99))
-wtd_seq <- seq(wtd_r[1], wtd_r[2], length.out = 50)
-wtd_levs <- quantile(d$wtd, c(0.05, 0.95))
+wtd_seq <- seq(wtd_r[1], wtd_r[2], length.out = 100)
+wtd_levs <- quantile(plot$wtd, c(0.05, 0.95)) %>% transform("wtd_log")
 
-p50_seq <- quantile(d$p50, seq(0.01, 0.99, length.out = 50))
+p50_seq <- quantile(d$p50, seq(0.01, 0.99, length.out = 100))
 p50_levs <- quantile(trait$p50, c(0.05, 0.95)) %>% transform("P50_sqrt")
 
 p50_labs <- c(-2, -4, -6, -8)
 p50_breaks <- transform(p50_labs, "P50_sqrt")
 
-rd_seq <- quantile(d$rd, seq(0.01, 0.99, length.out = 50))
+rd_seq <- quantile(d$rd, seq(0.01, 0.99, length.out = 100))
 rd_levs <- quantile(trait$rd_max, c(0.05, 0.95)) %>% transform("rd_log")
 
 
