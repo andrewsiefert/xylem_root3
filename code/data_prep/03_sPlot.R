@@ -19,7 +19,7 @@ plots <- header.xylem %>%
   janitor::clean_names() %>%
   rename(plot_id = 1) %>%
   select(plot_id, longitude, latitude, location_uncertainty_m, continent, s_biome, ecoregion) %>%
-  filter(location_uncertainty_m <= 500) %>%
+  filter(abs(location_uncertainty_m) <= 1000) %>%
   rename(biome = s_biome) %>%
   na.omit() %>%
   distinct()
