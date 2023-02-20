@@ -1,11 +1,14 @@
 library(ape)
 library(phytools)
 library(viridis)
-setwd("~/Dropbox/Data/p50_global/phylo")
+library(tidyverse)
+
 
 # read in traits and tree
-trait <- read.csv("trait_data_sPlot.csv", header=TRUE)
-tree <- read.tree("p50_rd_phylo.tre")
+trait <- readRDS("data/cleaned/trait_data.rds") %>% 
+  select(species= species_wfo, p50, rd = rd_max) %>%
+  as.data.frame()
+tree <- read.tree("data/phylo/p50_rd_phylo.tre")
 
 # to ensure correct order of tips and traits
 rownames(trait) <- trait$species %>% str_replace_all(" ", "_")       ###add row names
@@ -18,7 +21,7 @@ rownames(trait) <- tree$tip.label
 p50 <- setNames(trait[,2],trait$species)
 rd <- setNames(log(trait[,3]+1,base=10),trait$species)
 
-tiff("Fig1.tiff",width=3000,height=3000,res=300)
+tiff("results/figures/phylo.tiff",width=3000,height=3000,res=300)
 obj <- contMap(tree, p50, plot=F, ftype="i", fsize = 2) %>% 
   setMap(viridis::viridis_pal(option = "inferno")(10))
 plotTree.wBars(obj$tree, rd, method = "plotSimmap", colors = obj$cols,
@@ -32,8 +35,8 @@ text(160,80,"Superasterids", srt=-50)
 add.color.bar(180, obj$cols, title = expression("P"[50]*" (MPa)"), lims = obj$lims, digits=1, prompt = FALSE,
               x = -80, y = 35)
 text(-150,-412,"Rooting depth (m)", srt=-20)
-text(-53,-520,"60")
-text(-285,-430,"30")
-text(-203,-455,"8")
-text(-108,-465,"1")
+#text(-53,-520,"60")
+#text(-285,-430,"30")
+#text(-203,-455,"8")
+#text(-108,-465,"1")
 dev.off()

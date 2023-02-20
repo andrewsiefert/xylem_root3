@@ -1,8 +1,8 @@
 library(tidyverse)
 library(mgcv)
 
-wtd_nt <- readRDS("~/projects/xylem_root2/results/models/arid_wtd_no_trait.rds")
-wtd_wt <- readRDS("~/projects/xylem_root2/results/models/arid_wtd_m4.rds")
+wtd_nt <- readRDS("results/models/arid_wtd_no_trait.rds")
+wtd_wt <- readRDS("results/models/arid_wtd_traits.rds")
 
 lrt <- anova(wtd_nt, wtd_wt, test = "Chisq")
 
