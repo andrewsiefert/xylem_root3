@@ -30,7 +30,7 @@ backtransform <- function(x, var) {
     
   # WTD log transform
   } else if(var == "wtd_log") {
-    out <- exp(x*pt$scale[5] + pt$center[5]) - 0.01
+    out <- exp(x*pt$scale[3] + pt$center[3]) - 0.01
   }
   
   return(out)
@@ -63,7 +63,7 @@ transform <- function(x, var) {
     
   # WTD log transform  
   } else if(var == "wtd_log") {
-    out <- (log(x+0.01) - pt$center[5])/pt$scale[5]
+    out <- (log(x+0.01) - pt$center[3])/pt$scale[3]
   }
   
   return(out)
