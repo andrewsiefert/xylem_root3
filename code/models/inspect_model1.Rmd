@@ -1,0 +1,45 @@
+---
+title: "Aridity x WTD | No trait model"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F, message = F, warning = F)
+```
+
+
+```{r}
+library(mgcv)
+
+
+setwd("~/projects/xylem_root3")
+source("code/transformers.R")
+
+
+m <- readRDS("results/models/arid_wtd_no_trait.rds")
+```
+
+
+## Model summary
+```{r}
+m$converged
+summary(m)
+```
+
+### Conditional and marginal R^2^
+```{r}
+var2 <- function(x) mean((x-mean(x))^2)
+
+var_f <- var2(m$linear.predictors)
+vc <- gammit::extract_vc(m)
+var_spp <- vc[1,3]
+var_eco <- vc[2,3]
+
+r2_marginal <- var_f/(var_f+var_spp+var_eco+pi^2/3)
+r2_conditional <- (var_f+var_spp+var_eco)/(var_f+var_spp+var_eco+pi^2/3)
+
+rbind(r2_marginal, r2_conditional)
+```
