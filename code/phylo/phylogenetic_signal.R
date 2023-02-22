@@ -19,20 +19,10 @@ rownames(trait) <- tree$tip.label
 
 # test phylogenetic correlation
 spp <- trait$species
-corBM <- corBrownian(phy = tree, form = ~spp)
+corLambda <- corPagel(value=1, phy=tree, form=~spp)
 
-m1 <- gls(log(rd) ~ sqrt(abs(p50)), data = trait, correlation = corBM)  
-summary(m1)
-plot(m1)
-qqnorm(resid(m1))
-qqline(resid(m1))
-
-
-m2 <- gls(log(rd) ~ p50, data = trait, correlation = corBM)  
-summary(m2)
-plot(m2)
-qqnorm(resid(m2))
-qqline(resid(m2))
+m <- gls(log(rd) ~ sqrt(abs(p50)), data = trait, correlation = corLambda)  
+summary(m)
 
 
 # test phylogenetic signal
