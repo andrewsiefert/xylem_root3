@@ -21,7 +21,7 @@ rownames(trait) <- tree$tip.label
 spp <- trait$species
 corLambda <- corPagel(value=1, phy=tree, form=~spp)
 
-m <- gls(log(rd) ~ sqrt(abs(p50)), data = trait, correlation = corLambda)  
+m <- gls(scale(log(rd)) ~ scale(sqrt(abs(p50))), data = trait, correlation = corLambda)  
 summary(m)
 
 

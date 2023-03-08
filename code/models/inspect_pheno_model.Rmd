@@ -1,0 +1,598 @@
+---
+title: "P50 x rooting depth x aridity x WTD x deciduousness"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F, message = F, warning = F)
+```
+
+
+```{r}
+library(tidyverse)
+library(mgcv)
+library(aws)
+library(terra)
+library(ks)
+library(modelr)
+
+
+setwd("~/projects/xylem_root3")
+source("code/transformers.R")
+
+
+m <- readRDS("results/models/arid_wtd_traits_pheno.rds")
+
+d <- readRDS("data/cleaned/p50_rd_data_ecoregion.rds")
+
+
+# add leaf phenology
+pheno <- read_csv("data/traits/leaf_phenology.csv")
+traits <- readRDS("data/cleaned/trait_data.rds") %>%
+  select(species = species_wfo, p50, rd_max) 
+
+pheno2 <- inner_join(pheno, traits) %>%
+  mutate(decid = as.numeric(leaf_phenology == "d")) %>%
+  select(p50:decid)
+
+ecoregion <- distinct(d, ecoregion) %>%
+  mutate(eco = factor(ecoregion))
+
+species <- distinct(d, species) %>%
+  mutate(spp = factor(species))
+
+d <- d %>% 
+  left_join(ecoregion) %>% 
+  left_join(species) %>% 
+  left_join(pheno2) %>%
+  select(pres, arid, wtd, p50, rd_max, spp, eco, decid) %>%
+  na.omit() %>%
+  mutate(arid = transform(arid, "arid_sqrt"),
+         arid2 = arid^2,
+         wtd = transform(wtd, "wtd_log"),
+         wtd2 = wtd^2,
+         p50 = transform(p50, "P50_sqrt"),
+         p502 = p50^2,
+         rd = transform(rd_max, "rd_log"),
+         rd2 = rd^2) %>%
+  select(-rd_max)
+
+trait <- readRDS("data/cleaned/trait_data_sPlot.rds") %>%
+  dplyr::select(species, p50, rd_max) %>%
+  na.omit()
+
+plot <- readRDS("data/cleaned/plot_clim_data.rds")
+```
+
+
+## Model summary
+```{r}
+m$converged
+summary(m)
+```
+
+### Conditional and marginal R^2^
+```{r}
+var2 <- function(x) mean((x-mean(x))^2)
+
+var_f <- var2(m$linear.predictors)
+vc <- gammit::extract_vc(m)
+var_spp <- vc[1,3]
+var_eco <- vc[2,3]
+
+r2_marginal <- var_f/(var_f+var_spp+var_eco+(pi^2/3))
+r2_conditional <- (var_f+var_spp+var_eco)/(var_f+var_spp+var_eco+(pi^2/3))
+
+rbind(r2_marginal, r2_conditional)
+```
+
+
+```{r}
+post <- rmvn(2000, coef(m)[1:40], vcov(m)[1:40,1:40]) %>%
+  as_tibble() %>%
+  setNames(names(coef(m))[1:40]) %>%
+  janitor::clean_names()
+
+coef <- coef(m)
+eco <- coef[str_detect(names(coef), "eco")]
+spp <- coef[str_detect(names(coef), "spp")]
+
+eco_int <- weighted.mean(eco, table(d$eco))
+spp_int <- weighted.mean(spp, table(d$spp))
+re_int <- eco_int + spp_int
+
+arid_r <- quantile(d$arid, c(0.01, 0.99))
+arid_seq <- seq(arid_r[1], arid_r[2], length.out = 50)
+arid_levs <- quantile(plot$arid, c(0.05, 0.95)) %>% transform("arid_sqrt")
+
+wtd_r <- quantile(d$wtd, c(0.01, 0.99))
+wtd_seq <- seq(wtd_r[1], wtd_r[2], length.out = 50)
+wtd_levs <- quantile(plot$wtd, c(0.05, 0.95)) %>% transform("wtd_log")
+
+p50_seq <- quantile(d$p50, seq(0.01, 0.99, length.out = 50))
+p50_levs <- quantile(trait$p50, c(0.05, 0.95)) %>% transform("P50_sqrt")
+
+p50_labs <- c(-2, -4, -6, -8)
+p50_breaks <- transform(p50_labs, "P50_sqrt")
+
+rd_seq <- quantile(d$rd, seq(0.01, 0.99, length.out = 50))
+rd_levs <- quantile(trait$rd_max, c(0.05, 0.95)) %>% transform("rd_log")
+
+label_p50 <- function(x, bt = TRUE) {
+  if(bt) x <- backtransform(x, "P50_sqrt")
+  lab <- x %>% round(1) %>% paste("P50 =", ., "MPa") %>% fct_reorder(x)
+  return(lab)
+}
+
+label_rd <- function(x, bt = TRUE) {
+  if(bt) x <- backtransform(x, "rd_log")
+  lab <- x %>% round(1) %>% paste("Rooting depth =", ., "m") %>% fct_reorder(-x)
+  return(lab)
+}
+
+label_arid <- function(x, bt = TRUE) {
+  if(bt) x <- backtransform(x, "arid_sqrt")
+  lab <- x %>% round(1) %>% paste("Aridity Index =", .) %>% fct_reorder(x)
+  return(lab)
+}
+
+label_wtd <- function(x, bt = TRUE) {
+  if(bt) x <- backtransform(x, "wtd_log")
+  lab <- x %>% round(1) %>% paste("WTD =", .) %>% fct_reorder(-x)
+  return(lab)
+}
+
+# axis labels
+p50_lab <- bquote(P[50]~(MPa))
+rd_lab <- "Rooting depth (m)"
+wtd_lab <- "Water table depth (m)"
+
+# colors for masks in 2D plots
+t_col <- function(color, percent = 50) {
+  rgb.val <- col2rgb(color)
+  t.col <- rgb(rgb.val[1], rgb.val[2], rgb.val[3], max = 255, 
+               alpha = (100 - percent) * 255 / 100)
+  invisible(t.col)
+}
+
+clear <- t_col("white", 100)
+mid <- t_col("white", 25)
+```
+
+
+## Trait effects
+
+### P50
+```{r}
+grid <- expand.grid(decid = c(0, 1),
+                    p50 = p50_seq,
+                    arid = arid_levs,
+                    wtd = wtd_levs) %>%
+  as_tibble() %>%
+  mutate(p502 = p50^2, 
+         y = 1)
+
+X <- model.matrix(y ~ decid*(arid*wtd*p50 + p502), data = grid) %>% 
+  as_tibble() %>% 
+  janitor::clean_names() %>%
+  as.matrix()
+
+beta <- t(post[colnames(X)])
+
+pred <- plogis(X %*% beta + re_int)
+
+df <- grid %>%
+  mutate(arid = label_arid(arid),
+         wtd = label_wtd(wtd),
+         est = apply(pred, 1, mean),
+         lo = apply(pred, 1, quantile, 0.05),
+         hi = apply(pred, 1, quantile, 0.95), 
+         decid = ifelse(decid == 1, "deciduous", "evergreen"))
+
+ggplot(df, aes(x = p50, y = est)) + 
+  geom_path(aes(color = decid)) + 
+  geom_ribbon(aes(ymin = lo, ymax = hi, fill = decid), alpha = 0.2) +
+  scale_x_reverse(breaks = p50_breaks, labels = p50_labs) +
+  facet_grid(wtd~arid) +
+  labs(x = "P50", 
+       y = "Occurrence probability")
+```
+
+
+### Rooting depth
+```{r}
+grid <- expand.grid(decid = c(0, 1), 
+                    rd = rd_seq,
+                    arid = arid_levs,
+                    wtd = wtd_levs) %>%
+  as_tibble() %>%
+  mutate(rd2 = rd^2, 
+         y = 1)
+
+X <- model.matrix(y ~ decid*(arid*wtd*rd + rd2), data = grid) %>% 
+  as_tibble() %>% 
+  janitor::clean_names() %>%
+  as.matrix()
+
+beta <- t(post[colnames(X)])
+
+pred <- plogis(X %*% beta + re_int)
+
+df <- grid %>%
+  mutate(rd = backtransform(rd, "rd_log"),
+         arid = label_arid(arid),
+         wtd = label_wtd(wtd),
+         est = apply(pred, 1, mean),
+         lo = apply(pred, 1, quantile, 0.05),
+         hi = apply(pred, 1, quantile, 0.95),
+         decid = ifelse(decid == 1, "deciduous", "evergreen"))
+
+
+ggplot(df, aes(x = rd, y = est)) + 
+  geom_path(aes(color = decid)) + 
+  geom_ribbon(aes(ymin = lo, ymax = hi, fill = decid), alpha = 0.2) +
+  facet_grid(wtd~arid) +
+  labs(x = "Rooting depth (m)", 
+       y = "Occurrence probability") +
+  scale_x_log10()
+```
+
+### P50 x rooting depth
+
+#### Deciduous
+```{r}
+# create mask
+
+tr <- d %>% 
+  filter(decid == 1) %>%
+  dplyr::select(p50, rd) %>% 
+  distinct() %>%
+  rename(p50 = p50) %>%
+  mutate(p50 = sqrt(abs(backtransform(p50, "P50_sqrt"))),
+         rd = log(backtransform(rd, "rd_log")))
+
+hull_pts <- chull(tr)
+hull <- tr[c(hull_pts, hull_pts[1]),] %>% 
+  as_tibble()
+
+p <- sp::Polygon(hull)
+ps <- sp::Polygons(list(p),1)
+sps <- sp::SpatialPolygons(list(ps))
+
+
+mask <- expand.grid(x = modelr::seq_range(tr$p50, 200), 
+                    y = modelr::seq_range(tr$rd, 200)) %>%
+  mutate(value = 1) %>%
+  raster::rasterFromXYZ() %>%
+  raster::crop(raster::extent(sps)) %>%
+  raster::mask(sps, inverse = T) %>%
+  as.data.frame(xy = T) %>%
+  as_tibble() %>%
+  mutate(x = x, y = exp(y))
+
+# get predictions
+grid <- expand.grid(decid = 1,
+                    arid = arid_levs, 
+                    wtd = wtd_levs,
+                    p50 = modelr::seq_range(d$p50, 50, expand = 0.01), 
+                    rd = modelr::seq_range(transform(exp(tr$rd), "rd_log"), 50, expand = 0.01)) %>%
+  as_tibble() %>%
+  mutate(arid2 = arid^2,
+         wtd2 = wtd^2,
+         p502 = p50^2,
+         rd2 = rd^2, 
+         y = 1)
+
+X <- model.matrix(y ~ decid*(arid*wtd*p50*rd + arid2 + wtd2 + p502 + rd2), data = grid) %>% 
+  as_tibble() %>% 
+  janitor::clean_names() %>%
+  as.matrix()
+
+beta <- t(post[colnames(X)])
+
+pred <- plogis(X %*% beta + re_int) %>% rowMeans()
+
+df <- grid %>%
+  mutate(p50 = backtransform(p50, "P50_sqrt") %>% abs() %>% sqrt(),
+         rd = backtransform(rd, "rd_log"),
+         arid = label_arid(arid),
+         wtd = label_wtd(wtd),
+         pres = pred)
+
+p50_labs <- -seq(0.5, 4, by = 0.5)^2
+p50_breaks <- sqrt(-p50_labs)
+
+df %>% 
+  ggplot(aes(x = p50, y = rd)) + 
+  geom_raster(aes(fill = pres %>% pmax(0.0001) %>% pmin(0.3))) + 
+  geom_contour(aes(z = pres), color = "white", breaks = seq(0, 1, 0.02)) +
+  scale_fill_viridis_c(trans = "log", breaks = c(0.001, 0.01, 0.1)) +   
+  theme_bw() + 
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+  labs(x = p50_lab, y = rd_lab, fill = "Probability of\noccurrence") +
+  ggnewscale::new_scale_fill() +
+  geom_raster(data = mask, aes(x = x, y = y, fill = value), show.legend = F) +
+  scale_fill_gradient2(low = 1, mid = mid, high = 2, na.value = clear) + 
+  facet_grid(wtd~arid) +
+  geom_point(data = tr %>% mutate(rd = exp(rd)), alpha = 0.2) +
+  scale_x_continuous(expand=c(0,0), limits = c(max(tr$p50), min(tr$p50)),
+                  oob = scales::squish_infinite, labels = p50_labs, breaks = p50_breaks) +
+  scale_y_log10(expand=c(0,0), limits = range(df$rd), oob = scales::squish_infinite) 
+```
+
+#### Evergreen
+```{r}
+# create mask
+tr <- d %>% 
+  filter(decid == 0) %>%
+  dplyr::select(p50, rd) %>% 
+  distinct() %>%
+  rename(p50 = p50) %>%
+  mutate(p50 = sqrt(abs(backtransform(p50, "P50_sqrt"))),
+         rd = log(backtransform(rd, "rd_log")))
+
+hull_pts <- chull(tr)
+hull <- tr[c(hull_pts, hull_pts[1]),] %>% 
+  as_tibble()
+
+p <- sp::Polygon(hull)
+ps <- sp::Polygons(list(p),1)
+sps <- sp::SpatialPolygons(list(ps))
+
+
+mask <- expand.grid(x = modelr::seq_range(tr$p50, 200), 
+                    y = modelr::seq_range(tr$rd, 200)) %>%
+  mutate(value = 1) %>%
+  raster::rasterFromXYZ() %>%
+  raster::crop(raster::extent(sps)) %>%
+  raster::mask(sps, inverse = T) %>%
+  as.data.frame(xy = T) %>%
+  as_tibble() %>%
+  mutate(x = x, y = exp(y))
+
+# get predictions
+grid <- expand.grid(decid = 0,
+                    arid = arid_levs, 
+                    wtd = wtd_levs,
+                    p50 = modelr::seq_range(d$p50, 50, expand = 0.01), 
+                    rd = modelr::seq_range(transform(exp(tr$rd), "rd_log"), 50, expand = 0.01)) %>%
+  as_tibble() %>%
+  mutate(arid2 = arid^2,
+         wtd2 = wtd^2,
+         p502 = p50^2,
+         rd2 = rd^2, 
+         y = 1)
+
+X <- model.matrix(y ~ decid*(arid*wtd*p50*rd + arid2 + wtd2 + p502 + rd2), data = grid) %>% 
+  as_tibble() %>% 
+  janitor::clean_names() %>%
+  as.matrix()
+
+beta <- t(post[colnames(X)])
+
+pred <- plogis(X %*% beta + re_int) %>% rowMeans()
+
+df <- grid %>%
+  mutate(p50 = backtransform(p50, "P50_sqrt") %>% abs() %>% sqrt(),
+         rd = backtransform(rd, "rd_log"),
+         arid = label_arid(arid),
+         wtd = label_wtd(wtd),
+         pres = pred)
+
+p50_labs <- -seq(0.5, 4, by = 0.5)^2
+p50_breaks <- sqrt(-p50_labs)
+
+df %>% 
+  ggplot(aes(x = p50, y = rd)) + 
+  geom_raster(aes(fill = pres %>% pmax(0.0001) %>% pmin(0.3))) + 
+  geom_contour(aes(z = pres), color = "white", breaks = seq(0, 1, 0.02)) +
+  scale_fill_viridis_c(trans = "log", breaks = c(0.001, 0.01, 0.1)) +   
+  theme_bw() + 
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+  labs(x = p50_lab, y = rd_lab, fill = "Probability of\noccurrence") +
+  ggnewscale::new_scale_fill() +
+  geom_raster(data = mask, aes(x = x, y = y, fill = value), show.legend = F) +
+  scale_fill_gradient2(low = 1, mid = mid, high = 2, na.value = clear) + 
+  facet_grid(wtd~arid) +
+  geom_point(data = tr %>% mutate(rd = exp(rd)), alpha = 0.2) +
+  scale_x_continuous(expand=c(0,0), limits = c(max(tr$p50), min(tr$p50)),
+                  oob = scales::squish_infinite, labels = p50_labs, breaks = p50_breaks) +
+  scale_y_log10(expand=c(0,0), limits = range(df$rd), oob = scales::squish_infinite) 
+```
+
+## Environmental responses
+
+### Aridity response
+
+```{r, fig.height=5, fig.width=7}
+
+grid <- expand.grid(decid = c(0, 1),
+                    p50 = p50_levs,
+                    rd = rd_levs, 
+                    arid = arid_seq) %>%
+  as_tibble() %>%
+  mutate(arid2 = arid^2, 
+         y = 1)
+
+X <- model.matrix(y ~ decid*(arid*p50*rd + arid2), data = grid) %>% 
+  as_tibble() %>% 
+  janitor::clean_names() %>%
+  as.matrix()
+
+beta <- t(post[colnames(X)])
+
+pred <- plogis(X %*% beta + re_int)
+
+df <- grid %>%
+  mutate(p50_b = label_p50(p50),
+         rd_b = label_rd(rd),
+         arid = backtransform(arid, "arid_sqrt"),
+         est = apply(pred, 1, mean),
+         lo = apply(pred, 1, quantile, 0.05),
+         hi = apply(pred, 1, quantile, 0.95), 
+         decid = ifelse(decid == 1, "deciduous", "evergreen"))
+
+ggplot(df, aes(x = arid, y = est)) + 
+  geom_path(aes(color = decid)) + 
+  geom_ribbon(aes(ymin = lo, ymax = hi, fill = decid), alpha = 0.2) +
+  facet_grid(rd_b~p50_b) +
+  labs(x = "Aridity Index", 
+       y = "Occurrence probability")
+```
+
+
+### WTD response 
+
+```{r, fig.height=5, fig.width=7}
+grid <- expand.grid(decid = c(0, 1),
+                    p50 = p50_levs,
+                    rd = rd_levs, 
+                    wtd = wtd_seq) %>%
+  as_tibble() %>%
+  mutate(wtd2 = wtd^2, 
+         y = 1)
+
+X <- model.matrix(y ~ decid*(wtd*p50*rd + wtd2), data = grid) %>% 
+  as_tibble() %>% 
+  janitor::clean_names() %>%
+  as.matrix()
+
+beta <- t(post[colnames(X)])
+
+pred <- plogis(X %*% beta + re_int)
+
+df <- grid %>%
+  mutate(p50_b = label_p50(p50),
+         rd_b = label_rd(rd),
+         wtd = backtransform(wtd, "wtd_log")+0.01,
+         est = apply(pred, 1, mean),
+         lo = apply(pred, 1, quantile, 0.05),
+         hi = apply(pred, 1, quantile, 0.95), 
+         decid = ifelse(decid == 1, "deciduous", "evergreen"))
+
+ggplot(df, aes(x = wtd, y = est)) + 
+  geom_path(aes(color = decid)) + 
+  geom_ribbon(aes(ymin = lo, ymax = hi, fill = decid), alpha = 0.2) +
+  scale_x_log10() +
+  facet_grid(rd_b~p50_b) +
+  labs(x = "Water table depth", 
+       y = "Occurrence probability")
+```
+
+
+### Aridity x WTD response
+```{r, fig.height=5, fig.width=7, warning=F}
+
+p50_levs2 <- quantile(trait$p50, c(0.1, 0.9)) %>% transform("P50_sqrt")
+rd_levs2 <- quantile(trait$rd_max, c(0.1, 0.9)) %>% transform("rd_log")
+
+env <- distinct(d, arid, wtd)
+
+n <- 500
+bw <- Hpi(cbind(env$arid, env$wtd))*4
+
+de <- kde(cbind(env$arid, env$wtd), H = bw, gridsize = n)
+
+r <- terra::rast(t(de$estimate)[n:1,])
+ext(r) <- c(min(env$arid), max(env$arid), min(env$wtd), max(env$wtd))
+
+cont <- as.contour(r, nlevels = 100)
+
+poly <- as.polygons(cont[cont$level == cont$level[2]])
+poly2 <- as.polygons(cont[cont$level == cont$level[1]])
+
+r2 <- rast(ncols=200, nrows=200, extent = ext(poly2), vals = 1)
+mask <- rasterize(poly, r2, fun = sum) %>%
+  as.data.frame(xy = T, na.rm = F) %>%
+  as_tibble() %>%
+  rename(arid = 1, wtd = 2, mask = 3)
+
+
+t_col <- function(color, percent = 50) {
+  rgb.val <- col2rgb(color)
+  t.col <- rgb(rgb.val[1], rgb.val[2], rgb.val[3], max = 255, 
+               alpha = (100 - percent) * 255 / 100)
+  invisible(t.col)
+}
+
+clear <- t_col("white", 100)
+mid <- t_col("white", 25)
+
+
+grid <- expand.grid(decid = c(0, 1),
+                    p50 = p50_levs2,
+                    rd = rd_levs2,
+                    arid = seq_range(mask$arid, 50),
+                    wtd = seq_range(mask$wtd, 50)) %>%
+  na.omit() %>%
+  #filter(arid < 3.5) %>%
+  as_tibble() %>%
+  mutate(arid2 = arid^2,
+         wtd2 = wtd^2, 
+         p502 = p50^2,
+         rd2 = rd^2,
+         y = 1)
+
+X <- model.matrix(y ~ decid*(arid*wtd*p50*rd + arid2 + wtd2 + p502 + rd2), data = grid) %>% 
+  as_tibble() %>% 
+  janitor::clean_names() %>%
+  as.matrix()
+
+beta <- t(post[colnames(X)])
+
+pred <- plogis(X %*% beta + re_int) %>% rowMeans()
+
+df <- grid %>%
+  mutate(p50_b = label_p50(p50),
+         rd_b = label_rd(rd),
+         arid = backtransform(arid, "arid_sqrt"),
+         wtd = backtransform(wtd, "wtd_log") + 0.01,
+         pres = pred)
+
+mask <- mask %>%
+  mutate(arid = backtransform(arid, "arid_sqrt"),
+         wtd = backtransform(wtd, "wtd_log") + 0.01)
+```
+
+
+#### Deciduous
+```{r}
+df %>% filter(decid == 1) %>%
+  ggplot(aes(x = arid, y = wtd)) + 
+  geom_raster(aes(fill = pres %>% pmin(0.11))) +
+  geom_contour(aes(z = pres), color = "white", breaks = seq(0, 1, 0.01)) +
+  scale_fill_viridis_c(trans = "sqrt", breaks = c(0.01, 0.05, 0.1)) +   
+  labs(x = "Aridity index", 
+       y = "Water table depth (m)",
+       fill = "Probability of\noccurrence") +
+  ggnewscale::new_scale_fill() +
+  geom_tile(data = mask, aes(x = arid, y = wtd, fill = mask), show.legend = F) +
+  scale_fill_gradient2(low = clear, mid = clear, high = clear, na.value = mid) + 
+  facet_grid(rd_b~p50_b) +
+  scale_x_sqrt(expand = c(0,0), limits = range(df$arid), oob = scales::squish_infinite) +
+  scale_y_log10(expand = c(0,0), limits = range(df$wtd), oob = scales::squish_infinite,) +
+  theme_bw()
+```
+
+
+#### Evergreen
+```{r}
+df %>% filter(decid == 0) %>%
+  ggplot(aes(x = arid, y = wtd)) + 
+  geom_raster(aes(fill = pres %>% pmin(0.11))) +
+  geom_contour(aes(z = pres), color = "white", breaks = seq(0, 1, 0.01)) +
+  scale_fill_viridis_c(trans = "sqrt", breaks = c(0.01, 0.05, 0.1)) +   
+  labs(x = "Aridity index", 
+       y = "Water table depth (m)",
+       fill = "Probability of\noccurrence") +
+  ggnewscale::new_scale_fill() +
+  geom_tile(data = mask, aes(x = arid, y = wtd, fill = mask), show.legend = F) +
+  scale_fill_gradient2(low = clear, mid = clear, high = clear, na.value = mid) + 
+  facet_grid(rd_b~p50_b) +
+  scale_x_sqrt(expand = c(0,0), limits = range(df$arid), oob = scales::squish_infinite) +
+  scale_y_log10(expand = c(0,0), limits = range(df$wtd), oob = scales::squish_infinite,) +
+  theme_bw()
+```
